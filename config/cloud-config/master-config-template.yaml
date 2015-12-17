@@ -38,19 +38,28 @@ write_files:
     permissions: 0755
     content: |
       #! /usr/bin/bash
-      
+      CALICO_VERSION=$(/usr/bin/etcdctl get /calico-install/version) >/dev/null 2>&1 || CALICO_VERSION="0.12.0"
       if [ ! -f /opt/bin/calicoctl ]; then
         echo "Calico not installed - installing."
-       
         # Install the `calicoctl` binary
-        wget https://github.com/projectcalico/calico-docker/releases/download/v0.12.0/calicoctl
+        wget https://github.com/projectcalico/calico-containers/releases/download/v${CALICO_VERSION}/calicoctl
         chmod +x calicoctl
         sudo mv calicoctl /opt/bin
-
         # Fetch the calico/node container
-        sudo docker pull calico/node:v0.12.0
+        sudo docker pull calico/node:v${CALICO_VERSION} 
+      else
+        INSTALLED_VERSION=$(/opt/bin/calicoctl version)
+        MATCH=$(echo "${INSTALLED_VERSION}" | grep -c "${CALICO_VERSION}")
+        if [ $MATCH -eq 0 ]; then
+          wget https://github.com/projectcalico/calico-containers/releases/download/v${CALICO_VERSION}/calicoctl
+          chmod +x calicoctl
+          sudo mv calicoctl /opt/bin
+          # Fetch the calico/node container
+          sudo docker pull calico/node:v${CALICO_VERSION} 
+        else
+          echo "OK! you are already uptodate"
+        fi
       fi
-
   - path: /opt/bin/install-manifests.sh
     owner: root
     permissions: 0755
@@ -160,9 +169,9 @@ coreos:
 
         [Service]
         ExecStart=/opt/bin/calico-install.sh
-        RemainAfterExit=yes
-        Type=oneshot
-
+        
+        Restart=always
+        RestartSec=15m
     - name: calico-node.service
       runtime: true
       command: start
